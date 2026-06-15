@@ -9,11 +9,12 @@ from openai import OpenAI
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Asistente EIC UCN", page_icon=":material/school:", layout="wide")
 
-# CSS MEJORADO PARA LA ESTÉTICA PRO
+# CSS MEJORADO PARA LA ESTÉTICA PRO Y VERSIÓN MÓVIL
 st.markdown("""
     <style>
+        /* CORRECCIÓN: Aumentamos el padding-top a 4rem para evitar que la barra superior recorte los logos */
         .block-container {
-            padding-top: 2rem;
+            padding-top: 4rem; 
             padding-bottom: 1rem;
         }
         [data-testid="stSidebar"] {
@@ -212,7 +213,6 @@ with st.sidebar:
             st.caption("No hay chats recientes.")
 
 # --- 5. ENCABEZADO PRINCIPAL REDISEÑADO (EXPERT MODE) ---
-# Leemos las imágenes locales y las convertimos a código (Base64)
 def obtener_base64(ruta_imagen):
     if os.path.exists(ruta_imagen):
         with open(ruta_imagen, "rb") as img_file:
@@ -220,13 +220,13 @@ def obtener_base64(ruta_imagen):
     return ""
 
 b64_ucn = obtener_base64("logo_ucn.png")
-b64_eic = obtener_base64("logo_eic.png") # Cambia a .svg si tu logo original era SVG
+b64_eic = obtener_base64("logo_eic.png") 
 
-# Inyectamos HTML puro y Flexbox. Esto obliga a la pantalla (sea cual sea) a centrar y emparejar.
+# CORRECCIÓN DE TAMAÑO: Altura bajó de 90/80px a 55/50px para ser elegantes y no invasivos.
 html_logos = f"""
-<div style="display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 40px; margin-bottom: 20px;">
-    {f'<img src="data:image/png;base64,{b64_ucn}" style="height: 90px; width: auto; object-fit: contain;">' if b64_ucn else ''}
-    {f'<img src="data:image/png;base64,{b64_eic}" style="height: 80px; width: auto; object-fit: contain;">' if b64_eic else ''}
+<div style="display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 30px; margin-bottom: 10px;">
+    {f'<img src="data:image/png;base64,{b64_ucn}" style="height: 55px; width: auto; object-fit: contain;">' if b64_ucn else ''}
+    {f'<img src="data:image/png;base64,{b64_eic}" style="height: 50px; width: auto; object-fit: contain;">' if b64_eic else ''}
 </div>
 """
 st.markdown(html_logos, unsafe_allow_html=True)
