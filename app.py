@@ -8,7 +8,7 @@ from openai import OpenAI
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Asistente EIC UCN", page_icon=":material/school:", layout="wide")
 
-# CSS MEJORADO PARA LA ESTÉTICA PRO
+# CSS MEJORADO PARA LA ESTÉTICA PRO Y VERSIÓN MÓVIL
 st.markdown("""
     <style>
         .block-container {
@@ -29,6 +29,12 @@ st.markdown("""
         }
         [data-testid="stSidebar"] input {
             color: white !important;
+        }
+        /* CORRECCIÓN MÓVIL: Centrar todas las imágenes (logos) automáticamente */
+        div[data-testid="stImage"] {
+            display: flex;
+            justify-content: center;
+            align-items: center;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -109,7 +115,7 @@ if "anon_user_id" not in st.session_state:
     except Exception:
         st.session_state.anon_user_id = None
 
-# --- 4. BARRA LATERAL (ESTILO GEMINI) ---
+# --- 4. BARRA LATERAL ---
 with st.sidebar:
     if not st.session_state.usuario_id:
         st.markdown("### :material/account_circle: Acceso Estudiantes")
@@ -127,7 +133,6 @@ with st.sidebar:
                         st.session_state.usuario_nombre = resp.data[0]['nombre']
                         st.session_state.usuario_carrera = resp.data[0].get('carrera', 'Ingeniería')
                         
-                        # Al iniciar sesión, empezamos con una conversación en blanco
                         st.session_state.conversation_id = str(uuid.uuid4())
                         st.session_state.messages = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}]
                         st.rerun()
@@ -141,19 +146,24 @@ with st.sidebar:
             correo_reg = st.text_input("Correo Institucional:", key="reg_correo")
             pass_reg = st.text_input("Contraseña:", type="password", key="reg_pass")
             carrera_reg = st.selectbox("Carrera:", ["Ingeniería Civil Industrial", "Ingeniería Civil en Computación e Informática", "Ingeniería en Información y Control de Gestión", "Otra"])
+            
             if st.button("Crear Cuenta", use_container_width=True, icon=":material/person_add:"):
-                try:
-                    check = supabase.table("usuarios").select("id").eq("correo", correo_reg).execute()
-                    if len(check.data) > 0:
-                        st.warning("Correo ya registrado.", icon=":material/warning:")
-                    else:
-                        supabase.table("usuarios").insert({"correo": correo_reg, "contrasena": pass_reg, "nombre": nombre_reg, "carrera": carrera_reg}).execute()
-                        st.success("Cuenta creada. Por favor ingresa.", icon=":material/check_circle:")
-                except Exception:
-                    st.error("Error al registrar.", icon=":material/error:")
+                # CORRECCIÓN CORREOS: Validar que termine en ucn.cl o alumnos.ucn.cl
+                correo_limpio = correo_reg.strip().lower()
+                if not (correo_limpio.endswith("@ucn.cl") or correo_limpio.endswith("@alumnos.ucn.cl")):
+                    st.error("Solo se permiten correos institucionales (@ucn.cl o @alumnos.ucn.cl).", icon=":material/warning:")
+                else:
+                    try:
+                        check = supabase.table("usuarios").select("id").eq("correo", correo_limpio).execute()
+                        if len(check.data) > 0:
+                            st.warning("El correo ya está registrado.", icon=":material/warning:")
+                        else:
+                            supabase.table("usuarios").insert({"correo": correo_limpio, "contrasena": pass_reg, "nombre": nombre_reg, "carrera": carrera_reg}).execute()
+                            st.success("Cuenta creada con éxito. Por favor ingresa.", icon=":material/check_circle:")
+                    except Exception:
+                        st.error("Error al registrar.", icon=":material/error:")
 
     else:
-        # 1. PERFIL Y CERRAR SESIÓN
         with st.container(border=True):
             st.markdown(f"#### :material/person: {st.session_state.usuario_nombre}")
             st.caption(f":material/school: {st.session_state.usuario_carrera}")
@@ -165,7 +175,6 @@ with st.sidebar:
                 st.session_state.conversation_id = str(uuid.uuid4())
                 st.rerun()
         
-        # 2. BOTÓN DE NUEVA CONVERSACIÓN
         if st.button("Nueva Conversación", icon=":material/add:", type="primary", use_container_width=True):
             st.session_state.conversation_id = str(uuid.uuid4())
             st.session_state.messages = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}]
@@ -173,32 +182,24 @@ with st.sidebar:
             
         st.divider()
         
-        # 3. HISTORIAL DE CHATS DINÁMICO (Estilo Gemini)
         st.markdown("### :material/history: Recientes")
         
         try:
-            # Traemos todo el historial del usuario
             historial_bd = supabase.table("interacciones").select("conversacion_id, pregunta, fecha").eq("usuario_id", st.session_state.usuario_id).order("fecha").execute()
             
-            # Agrupamos por ID de conversación para sacar la primera pregunta como título
             conversaciones_agrupadas = {}
             for fila in historial_bd.data:
                 cid = fila["conversacion_id"]
                 if cid not in conversaciones_agrupadas:
                     conversaciones_agrupadas[cid] = fila["pregunta"]
             
-            # Dibujamos un botón estilo "tertiary" (plano) por cada chat
             for cid, pregunta in reversed(list(conversaciones_agrupadas.items())):
-                # Acortar el título si es muy largo
                 titulo_corto = pregunta[:28] + "..." if len(pregunta) > 28 else pregunta
-                
-                # Resaltar visualmente si es la conversación que tenemos abierta actualmente
                 es_activo = cid == st.session_state.conversation_id
                 tipo_btn = "secondary" if es_activo else "tertiary"
                 icono_btn = ":material/chat:" if es_activo else ":material/chat_bubble_outline:"
                 
                 if st.button(titulo_corto, key=f"hist_{cid}", type=tipo_btn, icon=icono_btn, use_container_width=True):
-                    # Si hacen clic, cargamos esa conversación específica
                     st.session_state.conversation_id = cid
                     st.session_state.messages = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}]
                     
@@ -207,14 +208,13 @@ with st.sidebar:
                         st.session_state.messages.append({"role": "user", "content": chat_fila["pregunta"]})
                         st.session_state.messages.append({"role": "assistant", "content": chat_fila["respuesta"], "db_id": chat_fila["id"]})
                         
-                        # Restauramos las estrellas de esa conversación
                         calif = chat_fila.get("calificacion")
                         if calif is not None:
                             st.session_state[f"stars_{chat_fila['id']}"] = calif - 1
                             st.session_state.calificaciones_guardadas[chat_fila["id"]] = calif
                     st.rerun()
                     
-        except Exception as e:
+        except Exception:
             st.caption("No hay chats recientes.")
 
 # --- 5. ENCABEZADO PRINCIPAL ---
@@ -222,15 +222,13 @@ col1, col2, col3 = st.columns([1, 4, 1])
 
 with col1:
     if os.path.exists("logo_ucn.png"):
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         st.image("logo_ucn.png", width=120) 
 
 with col2:
-    st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0; padding-top: 25px;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0; padding-top: 10px;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
 
 with col3:
-    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
     if os.path.exists("logo_eic.png"):
         st.image("logo_eic.png", width=140) 
     elif os.path.exists("logo_eic.svg"):
