@@ -2,13 +2,14 @@ import streamlit as st
 import os
 import uuid
 import time
+import base64
 from supabase import create_client, Client
 from openai import OpenAI
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Asistente EIC UCN", page_icon=":material/school:", layout="wide")
 
-# CSS MEJORADO PARA LA ESTÉTICA PRO Y VERSIÓN MÓVIL
+# CSS MEJORADO PARA LA ESTÉTICA PRO
 st.markdown("""
     <style>
         .block-container {
@@ -29,15 +30,6 @@ st.markdown("""
         }
         [data-testid="stSidebar"] input {
             color: white !important;
-        }
-        /* CORRECCIÓN MÓVIL DEFINITIVA: Centrar y evitar recortes */
-        div[data-testid="stImage"] {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        div[data-testid="stImage"] img {
-            object-fit: contain !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -219,22 +211,27 @@ with st.sidebar:
         except Exception:
             st.caption("No hay chats recientes.")
 
-# --- 5. ENCABEZADO PRINCIPAL REDISEÑADO ---
-# Usamos 4 columnas para mantener los logos en el centro y más pequeños
-col_espacio1, col_ucn, col_eic, col_espacio2 = st.columns([2, 1, 1, 2])
+# --- 5. ENCABEZADO PRINCIPAL REDISEÑADO (EXPERT MODE) ---
+# Leemos las imágenes locales y las convertimos a código (Base64)
+def obtener_base64(ruta_imagen):
+    if os.path.exists(ruta_imagen):
+        with open(ruta_imagen, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    return ""
 
-with col_ucn:
-    if os.path.exists("logo_ucn.png"):
-        st.image("logo_ucn.png", width=70) 
+b64_ucn = obtener_base64("logo_ucn.png")
+b64_eic = obtener_base64("logo_eic.png") # Cambia a .svg si tu logo original era SVG
 
-with col_eic:
-    if os.path.exists("logo_eic.png"):
-        st.image("logo_eic.png", width=110) 
-    elif os.path.exists("logo_eic.svg"):
-        st.image("logo_eic.svg", width=110)
+# Inyectamos HTML puro y Flexbox. Esto obliga a la pantalla (sea cual sea) a centrar y emparejar.
+html_logos = f"""
+<div style="display: flex; flex-direction: row; justify-content: center; align-items: center; gap: 40px; margin-bottom: 20px;">
+    {f'<img src="data:image/png;base64,{b64_ucn}" style="height: 90px; width: auto; object-fit: contain;">' if b64_ucn else ''}
+    {f'<img src="data:image/png;base64,{b64_eic}" style="height: 80px; width: auto; object-fit: contain;">' if b64_eic else ''}
+</div>
+"""
+st.markdown(html_logos, unsafe_allow_html=True)
 
-# El título ahora va de forma independiente DEBAJO de los logos
-st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0; padding-top: 15px;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
 st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
 
 st.divider()
