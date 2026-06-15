@@ -30,11 +30,14 @@ st.markdown("""
         [data-testid="stSidebar"] input {
             color: white !important;
         }
-        /* CORRECCIÓN MÓVIL: Centrar todas las imágenes (logos) automáticamente */
+        /* CORRECCIÓN MÓVIL DEFINITIVA: Centrar y evitar recortes */
         div[data-testid="stImage"] {
             display: flex;
             justify-content: center;
             align-items: center;
+        }
+        div[data-testid="stImage"] img {
+            object-fit: contain !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -148,7 +151,6 @@ with st.sidebar:
             carrera_reg = st.selectbox("Carrera:", ["Ingeniería Civil Industrial", "Ingeniería Civil en Computación e Informática", "Ingeniería en Información y Control de Gestión", "Otra"])
             
             if st.button("Crear Cuenta", use_container_width=True, icon=":material/person_add:"):
-                # CORRECCIÓN CORREOS: Validar que termine en ucn.cl o alumnos.ucn.cl
                 correo_limpio = correo_reg.strip().lower()
                 if not (correo_limpio.endswith("@ucn.cl") or correo_limpio.endswith("@alumnos.ucn.cl")):
                     st.error("Solo se permiten correos institucionales (@ucn.cl o @alumnos.ucn.cl).", icon=":material/warning:")
@@ -217,22 +219,23 @@ with st.sidebar:
         except Exception:
             st.caption("No hay chats recientes.")
 
-# --- 5. ENCABEZADO PRINCIPAL ---
-col1, col2, col3 = st.columns([1, 4, 1])
+# --- 5. ENCABEZADO PRINCIPAL REDISEÑADO ---
+# Usamos 4 columnas para mantener los logos en el centro y más pequeños
+col_espacio1, col_ucn, col_eic, col_espacio2 = st.columns([2, 1, 1, 2])
 
-with col1:
+with col_ucn:
     if os.path.exists("logo_ucn.png"):
-        st.image("logo_ucn.png", width=120) 
+        st.image("logo_ucn.png", width=70) 
 
-with col2:
-    st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0; padding-top: 10px;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
-
-with col3:
+with col_eic:
     if os.path.exists("logo_eic.png"):
-        st.image("logo_eic.png", width=140) 
+        st.image("logo_eic.png", width=110) 
     elif os.path.exists("logo_eic.svg"):
-        st.image("logo_eic.svg", width=140)
+        st.image("logo_eic.svg", width=110)
+
+# El título ahora va de forma independiente DEBAJO de los logos
+st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0; padding-top: 15px;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
 
 st.divider()
 
