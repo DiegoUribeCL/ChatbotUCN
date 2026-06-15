@@ -1,0 +1,21 @@
+# --- ARCHIVOS DE SEGURIDAD (¡CRÍTICO!) ---
+# Nunca subir las contraseñas ni las API Keys al repositorio
+.streamlit/secrets.toml
+.env
+
+# --- ENTORNOS VIRTUALES ---
+# Ignorar las carpetas donde se instala Python localmente
+venv/
+.venv/
+env/
+
+# --- CACHÉ Y ARCHIVOS TEMPORALES DE PYTHON ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- ARCHIVOS DEL SISTEMA OPERATIVO ---
+# Archivos basura que crean Windows o Mac automáticamente
+.DS_Store
+Thumbs.db

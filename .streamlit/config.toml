@@ -1,0 +1,15 @@
+[theme]
+# Acentos en color Cyan (como el texto "Admisión 2026")
+primaryColor = "#00b4c8"
+
+# Fondo principal oscuro (El azul marino de la web)
+backgroundColor = "#1a2a3a"
+
+# Fondo secundario para las cajas de texto y menú lateral
+secondaryBackgroundColor = "#2b3e50"
+
+# Color del texto principal
+textColor = "#ffffff"
+
+# Tipografía moderna y limpia
+font = "sans serif"
