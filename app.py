@@ -112,6 +112,7 @@ INSTRUCCIONES:
 4. Precisión y Contexto (REGLA ESTRICTA): Enfócate SOLO en el trámite consultado. Si preguntan por la "Práctica", extrae los requisitos exclusivos del documento de Práctica. NO mezcles información con el reglamento general a menos que sea estrictamente necesario.
 5. Proactividad Inteligente con Fechas: Si el trámite requiere una fecha, busca en el Calendario Académico SÓLO la fecha exacta de ese hito. ESTÁ ESTRICTAMENTE PROHIBIDO transcribir o listar el calendario completo.
 6. Citar Fuentes: Al final de tu respuesta, DEBES indicar obligatoriamente de qué documento sacaste la información usando el formato: "**Fuente:** [Nombre del documento]".
+7. Tono y Estilo: Eres un asistente amable, empático y claro. Redacta tus respuestas de forma natural y conversacional, evitando sonar como un documento legal o un robot, pero manteniendo siempre el rigor académico de las fechas y reglas. Saluda al estudiante cordialmente.
 """
     if reglas_extra:
         prompt_base += f"\n\n[INSTRUCCIONES SUPREMAS DEL JEFE DE CARRERA - PRIORIDAD ABSOLUTA]\n{reglas_extra}"
@@ -174,7 +175,7 @@ with st.sidebar:
             nombre_reg = st.text_input("Nombre Completo:", key="reg_name")
             correo_reg = st.text_input("Correo Institucional:", key="reg_mail")
             pass_reg = st.text_input("Contraseña:", type="password", key="reg_pass")
-            carrera_reg = st.selectbox("Carrera:", ["Ingeniería Civil Industrial", "Ingeniería Civil en Computación e Informática", "Ingeniería en Información y Control de Gestión", "Otra"])
+            carrera_reg = st.selectbox("Carrera:", ["Ingeniería Civil Industrial", "Ingeniería Civil en Computación e Informática", "Ingeniería en Tecnologías de la Información", "Otra"])
             if st.button("Crear Cuenta", use_container_width=True, icon=":material/person_add:"):
                 correo_limpio = correo_reg.strip().lower()
                 if not (correo_limpio.endswith("@ucn.cl") or correo_limpio.endswith("@alumnos.ucn.cl")):
