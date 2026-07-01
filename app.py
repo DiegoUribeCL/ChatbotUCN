@@ -402,7 +402,11 @@ if st.session_state.usuario_rol == "admin":
                 texto_generado = ""
                 placeholder = st.empty()
                 try:
-                    mensajes_borrador = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}, {"role": "user", "content": pregunta_input}]
+                    mensajes_borrador = [
+                        {"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}, 
+                        {"role": "user", "content": pregunta_input}
+                    ]
+                    
                     try:
                         respuesta_stream = cliente_llm.chat.completions.create(model="unsloth/Qwen3.6-35B-A3B-MTP-GGUF", messages=mensajes_borrador, temperature=0.1, max_tokens=2000, stream=True)
                     except Exception:
@@ -412,13 +416,19 @@ if st.session_state.usuario_rol == "admin":
                         if chunk.choices[0].delta.content is not None:
                             texto_generado += chunk.choices[0].delta.content
                             placeholder.info(f"**Escribiendo borrador...**\n\n{texto_generado}▌", icon=":material/memory:")
-                    if texto_generado.strip(): st.session_state.draft_respuesta = texto_generado
+                    
+                    # --- CORRECCIÓN CRÍTICA ---
+                    # Nos aseguramos de limpiar espacios y guardar TODO el texto generado antes de cualquier rerun
+                    if texto_generado.strip(): 
+                        st.session_state.draft_respuesta = texto_generado.strip()
                     else:
                         st.warning("Servidor no generó texto.", icon=":material/warning:")
                         st.session_state.draft_respuesta = " "
-                    time.sleep(1)
+                    
+                    # Quitamos el sleep innecesario para evitar desfases de red y forzamos refresco seguro
                     st.rerun()
-                except Exception as e: st.error(f"Error de servidor: {e}", icon=":material/error:")
+                except Exception as e: 
+                    st.error(f"Error de servidor: {e}", icon=":material/error:")
 
         if st.session_state.draft_respuesta:
             with st.form("form_guardar_faq"):
