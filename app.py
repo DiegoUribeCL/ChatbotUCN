@@ -596,6 +596,21 @@ else:
     st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
     st.divider()
 
+    # --- NUEVO: MOSTRAR FAQs A LOS ESTUDIANTES ---
+    with st.expander("📌 Ver Preguntas Frecuentes (Respuestas Inmediatas)"):
+        try:
+            faqs_activas = supabase.table("faqs").select("*").eq("estado", "activa").execute()
+            if faqs_activas.data:
+                for faq in faqs_activas.data:
+                    st.markdown(f"**P: {faq['pregunta']}**")
+                    st.info(faq['respuesta'])
+            else:
+                st.caption("No hay preguntas frecuentes activas en este momento.")
+        except Exception:
+            st.caption("No se pudieron cargar las FAQs.")
+    st.markdown("<br>", unsafe_allow_html=True)
+    # ---------------------------------------------
+
     for msg in st.session_state.messages:
         if msg["role"] != "system": 
             avatar_img = ":material/school:" if msg["role"] == "assistant" else ":material/person:"
@@ -677,6 +692,7 @@ else:
                 full_response = "Comprendo tu consulta, pero no tengo esa información específica."
             message_placeholder.markdown(full_response)
             
+            # --- NUEVO CLASIFICADOR ESTRICTO ---
             categoria_asignada = "Otro"
             try:
                 categorias_validas = [
@@ -684,36 +700,45 @@ else:
                     "Beneficios", "Certificados", "Congelación", "Convalidación", 
                     "Malla Curricular", "Minor", "Fechas y Plazos"
                 ]
-                categorias_texto = ", ".join(categorias_validas) + ", Otro"
-                cat_prompt = f"Clasifica la siguiente intención del alumno en UNA de estas categorías: {categorias_texto}. REGLA ESTRICTA: Responde SOLO con el nombre exacto de la categoría.\nPregunta: '{user_input}'"
+                categorias_texto = ", ".join(categorias_validas)
+                
+                # Prompt blindado
+                cat_prompt = f"Actúa como un clasificador automático. Lee la pregunta del alumno y clasifícala en EXACTAMENTE UNA de estas categorías: {categorias_texto}.\nREGLA DE ORO: Escribe ÚNICAMENTE el nombre de la categoría. Cero explicaciones, cero comillas.\nPregunta: '{user_input}'"
                 
                 try:
                     cat_resp = cliente_llm.chat.completions.create(
                         model="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
                         messages=[{"role": "user", "content": cat_prompt}],
-                        temperature=0.0, max_tokens=8, stream=False
+                        temperature=0.0, max_tokens=10, stream=False
                     )
                 except Exception:
                     cat_resp = cliente_respaldo.chat.completions.create(
                         model="gemini-2.5-flash",
                         messages=[{"role": "user", "content": cat_prompt}],
-                        temperature=0.0, max_tokens=8, stream=False
+                        temperature=0.0, max_tokens=10, stream=False
                     )
                     
                 respuesta_bruta = cat_resp.choices[0].message.content.strip().lower()
                 
+                # Búsqueda a prueba de fallos
                 for cat in categorias_validas:
-                    cat_limpia = cat.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
-                    resp_limpia = respuesta_bruta.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+                    cat_limpia = cat.lower().translate(str.maketrans('áéíóú', 'aeiou'))
+                    resp_limpia = respuesta_bruta.translate(str.maketrans('áéíóú', 'aeiou'))
                     
                     if cat_limpia in resp_limpia:
                         categoria_asignada = cat
                         break
                 
-                if categoria_asignada == "Otro" and ("fecha" in respuesta_bruta or "plazo" in respuesta_bruta or "cuando" in user_input.lower() or "calendario" in respuesta_bruta):
-                    categoria_asignada = "Fechas y Plazos"
+                # Inteligencia extra para fechas por si falla la IA
+                if categoria_asignada == "Otro":
+                    palabras_fecha = ["cuando", "fecha", "plazo", "calendario", "dia", "mes", "semana", "duracion"]
+                    user_input_limpio = user_input.lower().translate(str.maketrans('áéíóú', 'aeiou'))
+                    if any(p in user_input_limpio for p in palabras_fecha):
+                        categoria_asignada = "Fechas y Plazos"
 
-            except Exception as e: print(f"Error clasificación: {e}")
+            except Exception as e: 
+                print(f"Error clasificación: {e}")
+            # -----------------------------------
             
             nuevo_id = None
             try:
