@@ -59,30 +59,30 @@ st.markdown("""
         }
         
         /* --- OVERRIDE DEFINITIVO DE CAJAS DE TEXTO --- */
-        [data-testid="stSidebar"] input { 
-            background-color: #253c54 !important; 
-            border: 1px solid rgba(0, 180, 200, 0.6) !important;
-            border-radius: 6px !important;
-            color: white !important;
-            padding: 10px !important;
-        }
-        /* Eliminar bordes del contenedor por defecto de Streamlit para no tener bordes dobles */
-        [data-testid="stSidebar"] [data-baseweb="base-input"] {
-            background-color: transparent !important;
-            border: none !important;
-        }
-        /* Selectbox (Carrera) */
+        /* 1. Aplicar diseño al CONTENEDOR PRINCIPAL para incluir el ícono del ojito y evitar recortes */
+        [data-testid="stSidebar"] [data-baseweb="input"],
         [data-testid="stSidebar"] [data-baseweb="select"] {
             background-color: #253c54 !important; 
             border: 1px solid rgba(0, 180, 200, 0.6) !important;
             border-radius: 6px !important;
         }
-        /* Efecto al hacer clic (focus) */
-        [data-testid="stSidebar"] input:focus,
+        
+        /* 2. Efecto hover/focus en el contenedor principal */
+        [data-testid="stSidebar"] [data-baseweb="input"]:focus-within,
         [data-testid="stSidebar"] [data-baseweb="select"]:focus-within {
             border: 2px solid #00b4c8 !important;
             background-color: #2f4b68 !important;
         }
+
+        /* 3. Hacer transparentes los sub-contenedores e inputs internos para que no tapen el diseño padre */
+        [data-testid="stSidebar"] [data-baseweb="base-input"],
+        [data-testid="stSidebar"] input {
+            background-color: transparent !important;
+            border: none !important;
+            color: white !important;
+            box-shadow: none !important;
+        }
+        
         [data-testid="stSidebar"] div[data-baseweb="select"] span {
             color: white !important;
         }
