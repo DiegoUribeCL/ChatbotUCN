@@ -58,17 +58,17 @@ st.markdown("""
             color: gray;
         }
         
-        /* Asegurar fondo visible en los cuadros de texto y selects de la barra lateral */
+        /* Forzar fondo visible en los cuadros de texto y selects de TODAS las pestañas de la barra lateral */
         [data-testid="stSidebar"] div[data-baseweb="base-input"],
         [data-testid="stSidebar"] div[data-baseweb="select"] {
-            background-color: #0c151c !important; /* Color fijo más oscuro que el sidebar */
-            border: 1px solid rgba(0, 180, 200, 0.4) !important;
+            background-color: #253c54 !important; /* Color gris azulado CLARO para que contraste mucho */
+            border: 1px solid rgba(0, 180, 200, 0.6) !important;
             border-radius: 6px !important;
         }
         [data-testid="stSidebar"] div[data-baseweb="base-input"]:focus-within,
         [data-testid="stSidebar"] div[data-baseweb="select"]:focus-within {
-            border: 1px solid #00b4c8 !important;
-            background-color: #0f1a24 !important;
+            border: 2px solid #00b4c8 !important;
+            background-color: #2f4b68 !important;
         }
         [data-testid="stSidebar"] input { 
             color: white !important; 
