@@ -58,21 +58,30 @@ st.markdown("""
             color: gray;
         }
         
-        /* Forzar fondo visible en los cuadros de texto y selects de TODAS las pestañas de la barra lateral */
-        [data-testid="stSidebar"] div[data-baseweb="base-input"],
-        [data-testid="stSidebar"] div[data-baseweb="select"] {
-            background-color: #253c54 !important; /* Color gris azulado CLARO para que contraste mucho */
+        /* --- OVERRIDE DEFINITIVO DE CAJAS DE TEXTO --- */
+        [data-testid="stSidebar"] input { 
+            background-color: #253c54 !important; 
+            border: 1px solid rgba(0, 180, 200, 0.6) !important;
+            border-radius: 6px !important;
+            color: white !important;
+            padding: 10px !important;
+        }
+        /* Eliminar bordes del contenedor por defecto de Streamlit para no tener bordes dobles */
+        [data-testid="stSidebar"] [data-baseweb="base-input"] {
+            background-color: transparent !important;
+            border: none !important;
+        }
+        /* Selectbox (Carrera) */
+        [data-testid="stSidebar"] [data-baseweb="select"] {
+            background-color: #253c54 !important; 
             border: 1px solid rgba(0, 180, 200, 0.6) !important;
             border-radius: 6px !important;
         }
-        [data-testid="stSidebar"] div[data-baseweb="base-input"]:focus-within,
-        [data-testid="stSidebar"] div[data-baseweb="select"]:focus-within {
+        /* Efecto al hacer clic (focus) */
+        [data-testid="stSidebar"] input:focus,
+        [data-testid="stSidebar"] [data-baseweb="select"]:focus-within {
             border: 2px solid #00b4c8 !important;
             background-color: #2f4b68 !important;
-        }
-        [data-testid="stSidebar"] input { 
-            color: white !important; 
-            background-color: transparent !important; 
         }
         [data-testid="stSidebar"] div[data-baseweb="select"] span {
             color: white !important;
