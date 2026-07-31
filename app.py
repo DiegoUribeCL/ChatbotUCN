@@ -19,9 +19,8 @@ st.set_page_config(page_title="Asistente EIC UCN", page_icon=":material/school:"
 
 st.markdown("""
     <style>
-        /* Ocultar elementos por defecto de Streamlit */
-        #MainMenu {visibility: hidden;}
-        header {visibility: hidden;}
+        /* Ocultar elementos por defecto de Streamlit, pero mantener el botón de menú en celular */
+        [data-testid="stHeaderActionElements"] {display: none;}
         footer {visibility: hidden;}
         
         .block-container { padding-top: 1rem; padding-bottom: 1rem; }
@@ -59,13 +58,19 @@ st.markdown("""
             color: gray;
         }
         
-        [data-testid="stSidebar"] div[data-baseweb="input"], 
-        [data-testid="stSidebar"] div[data-baseweb="select"] {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            border: 1px solid #00b4c8 !important;
+        [data-testid="stSidebar"] div[data-baseweb="input"] > div, 
+        [data-testid="stSidebar"] div[data-baseweb="select"] > div {
+            background-color: rgba(0, 0, 0, 0.25) !important;
+            border: 1px solid rgba(0, 180, 200, 0.5) !important;
             border-radius: 6px !important;
+            transition: all 0.3s ease;
         }
-        [data-testid="stSidebar"] input { color: white !important; }
+        [data-testid="stSidebar"] div[data-baseweb="input"]:focus-within > div,
+        [data-testid="stSidebar"] div[data-baseweb="select"]:focus-within > div {
+            border: 1px solid #00b4c8 !important;
+            background-color: rgba(0, 0, 0, 0.4) !important;
+        }
+        [data-testid="stSidebar"] input { color: white !important; background-color: transparent !important; }
         div[data-testid="stImage"] { display: flex; justify-content: center; align-items: center; }
         div[data-testid="stImage"] img { object-fit: contain !important; }
         div[data-testid="metric-container"] {
