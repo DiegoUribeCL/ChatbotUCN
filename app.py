@@ -23,7 +23,7 @@ st.markdown("""
         [data-testid="stHeaderActionElements"] {display: none;}
         footer {visibility: hidden;}
         
-        .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+        .block-container { padding-top: 3.5rem; padding-bottom: 1rem; }
         [data-testid="stSidebar"] { background-color: #1a2a3a; }
         .stChatMessageAvatar { border-radius: 4px; }
         
@@ -58,19 +58,20 @@ st.markdown("""
             color: gray;
         }
         
-        [data-testid="stSidebar"] div[data-baseweb="input"] > div, 
-        [data-testid="stSidebar"] div[data-baseweb="select"] > div {
-            background-color: rgba(0, 0, 0, 0.25) !important;
+        /* Asegurar fondo visible en los cuadros de texto de la barra lateral */
+        [data-testid="stSidebar"] [data-testid="stTextInput"] div[data-baseweb="input"] {
+            background-color: rgba(0, 0, 0, 0.3) !important;
             border: 1px solid rgba(0, 180, 200, 0.5) !important;
             border-radius: 6px !important;
-            transition: all 0.3s ease;
         }
-        [data-testid="stSidebar"] div[data-baseweb="input"]:focus-within > div,
-        [data-testid="stSidebar"] div[data-baseweb="select"]:focus-within > div {
+        [data-testid="stSidebar"] [data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
             border: 1px solid #00b4c8 !important;
-            background-color: rgba(0, 0, 0, 0.4) !important;
+            background-color: rgba(0, 0, 0, 0.5) !important;
         }
-        [data-testid="stSidebar"] input { color: white !important; background-color: transparent !important; }
+        [data-testid="stSidebar"] input { 
+            color: white !important; 
+            background-color: transparent !important; 
+        }
         div[data-testid="stImage"] { display: flex; justify-content: center; align-items: center; }
         div[data-testid="stImage"] img { object-fit: contain !important; }
         div[data-testid="metric-container"] {
