@@ -8,15 +8,57 @@ import plotly.express as px
 import fitz  # PyMuPDF para extracción y vista previa de PDFs
 from supabase import create_client, Client
 from openai import OpenAI
+from werkzeug.security import generate_password_hash, check_password_hash
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Asistente EIC UCN", page_icon=":material/school:", layout="wide")
 
 st.markdown("""
     <style>
-        .block-container { padding-top: 4rem; padding-bottom: 1rem; }
+        /* Ocultar elementos por defecto de Streamlit */
+        #MainMenu {visibility: hidden;}
+        header {visibility: hidden;}
+        footer {visibility: hidden;}
+        
+        .block-container { padding-top: 1rem; padding-bottom: 1rem; }
         [data-testid="stSidebar"] { background-color: #1a2a3a; }
         .stChatMessageAvatar { border-radius: 4px; }
+        
+        /* Estilos mejorados para las burbujas de chat */
+        [data-testid="chatAvatarIcon-user"] { background-color: #00b4c8 !important; }
+        [data-testid="chatAvatarIcon-assistant"] { background-color: #1a2a3a !important; }
+        
+        [data-testid="stChatMessage"] {
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        /* Burbuja del asistente con un ligero fondo azul/gris */
+        [data-testid="stChatMessage"]:nth-child(odd) {
+            background-color: rgba(0, 180, 200, 0.05);
+            border-left: 3px solid #00b4c8;
+        }
+        
+        /* Disclaimer bajo el input */
+        [data-testid="stChatInput"] {
+            margin-bottom: 25px;
+        }
+        [data-testid="stChatInput"]::after {
+            content: "El Asistente Virtual UCN es una IA y puede cometer errores.";
+            display: block;
+            position: absolute;
+            bottom: -25px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 0.75rem;
+            color: gray;
+        }
+        
         [data-testid="stSidebar"] div[data-baseweb="input"], 
         [data-testid="stSidebar"] div[data-baseweb="select"] {
             background-color: rgba(255, 255, 255, 0.05) !important;
@@ -35,6 +77,11 @@ st.markdown("""
         [data-testid="stSidebar"] div[data-testid="stButton"] button {
             justify-content: flex-start !important;
             padding-left: 1rem !important;
+            transition: all 0.2s ease;
+        }
+        [data-testid="stSidebar"] div[data-testid="stButton"] button:hover {
+            border-color: #00b4c8 !important;
+            color: #00b4c8 !important;
         }
         [data-testid="stSidebar"] div[data-testid="stButton"] button > div {
             display: flex !important;
@@ -45,7 +92,7 @@ st.markdown("""
             text-align: left !important;
             margin-left: 0.5rem !important;
         }
-        hr { margin-top: 1rem; margin-bottom: 1rem; }
+        hr { margin-top: 1rem; margin-bottom: 1rem; opacity: 0.2; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -90,13 +137,35 @@ def cargar_reglas_jefatura():
         resp = supabase.table("reglas_jefatura").select("*").execute()
         reglas_str = ""
         for fila in resp.data:
-            reglas_str += f"- Cuando te pregunten sobre '{fila.get('tema_o_pregunta', '')}', DEBES RESPONDER EXACTAMENTE ESTO: {fila.get('respuesta_correcta_exigida', '')}\n"
+            tema = fila.get('tema_o_pregunta', '')
+            if tema in ["SYS_TEMP", "SYS_NEWS"]:
+                continue
+            reglas_str += f"- Cuando te pregunten sobre '{tema}', DEBES RESPONDER EXACTAMENTE ESTO: {fila.get('respuesta_correcta_exigida', '')}\n"
         return reglas_str
     except Exception:
         return ""
 
+def obtener_temperatura():
+    try:
+        resp = supabase.table("reglas_jefatura").select("respuesta_correcta_exigida").eq("tema_o_pregunta", "SYS_TEMP").execute()
+        if resp.data:
+            return float(resp.data[0]['respuesta_correcta_exigida'])
+    except Exception:
+        pass
+    return 0.1
+
+def obtener_noticias():
+    try:
+        resp = supabase.table("reglas_jefatura").select("respuesta_correcta_exigida").eq("tema_o_pregunta", "SYS_NEWS").execute()
+        if resp.data:
+            return "\n\n".join([r['respuesta_correcta_exigida'] for r in resp.data])
+    except Exception:
+        pass
+    return ""
+
 def generar_prompt_sistema(nombre=None, carrera=None):
     reglas_extra = cargar_reglas_jefatura()
+    noticias_rapidas = obtener_noticias()
     prompt_base = f"""
 Eres el Asistente Virtual Oficial de la Jefatura de Carrera de Ingeniería (UCN, Sede Coquimbo). 
 Tu fuente principal de información proviene de estos documentos:
@@ -116,12 +185,26 @@ INSTRUCCIONES:
 """
     if reglas_extra:
         prompt_base += f"\n\n[INSTRUCCIONES SUPREMAS DEL JEFE DE CARRERA - PRIORIDAD ABSOLUTA]\n{reglas_extra}"
+    if noticias_rapidas:
+        prompt_base += f"\n\n[NOTICIAS Y AVISOS DE ÚLTIMA HORA]\nTen en cuenta la siguiente información reciente para tus respuestas:\n{noticias_rapidas}"
     if nombre and carrera:
         prompt_base += f"\n\n[CONTEXTO DEL USUARIO ACTUAL]\nEstudiante: {nombre}\nCarrera: {carrera}."
     return prompt_base
 
 # --- 3. INICIALIZAR MEMORIA ---
 variables_sesion = ["usuario_id", "usuario_nombre", "usuario_carrera", "usuario_rol", "conversation_id", "calificaciones_guardadas", "timestamps_anonimo", "ultimo_mensaje_tiempo", "menu_admin"]
+
+@st.dialog("Acerca del Asistente Virtual UCN")
+def modal_acerca_de():
+    st.markdown("""
+El Asistente Virtual UCN es una herramienta de Inteligencia Artificial diseñada para responder de manera rápida y autónoma a las consultas de los estudiantes sobre normativas y trámites académicos.
+
+El proyecto tiene un doble propósito: facilitar a los estudiantes el acceso a la información institucional de forma autónoma y optimizar el trabajo administrativo. Al automatizar la atención de consultas frecuentes, el sistema agiliza los tiempos de respuesta y apoya la gestión de la Jefatura de Carrera y la Secretaría Docente.
+
+**Equipo de Desarrollo:** Diego Uribe y Sofía Farías (Estudiantes ICI).  
+**Profesor Guía:** Dr. Juan Bekios.  
+**Product Owner:** Fernando Montenegro (Jefe de Carrera ICI).
+""")
 for var in variables_sesion:
     if var not in st.session_state:
         if "usuario" in var: st.session_state[var] = None
@@ -149,26 +232,29 @@ if "anon_user_id" not in st.session_state:
 with st.sidebar:
     if not st.session_state.usuario_id:
         st.markdown("### :material/account_circle: Acceso Sistema")
-        tab_login, tab_registro = st.tabs(["Ingresar", "Registrarse"])
+        tab_login, tab_registro, tab_recuperar = st.tabs(["Ingresar", "Registrarse", "Recuperar"])
         
         with tab_login:
             correo_login = st.text_input("Correo Institucional:", key="log_mail")
             pass_login = st.text_input("Contraseña:", type="password", key="log_pass")
             if st.button("Acceder", type="primary", use_container_width=True, icon=":material/login:"):
                 try:
-                    resp = supabase.table("usuarios").select("*").eq("correo", correo_login).eq("contrasena", pass_login).execute()
-                    if len(resp.data) > 0:
-                        st.session_state.usuario_id = resp.data[0]['id']
-                        st.session_state.usuario_nombre = resp.data[0]['nombre']
-                        st.session_state.usuario_carrera = resp.data[0].get('carrera', 'N/A')
-                        st.session_state.usuario_rol = resp.data[0].get('rol', 'estudiante')
-                        
-                        st.session_state.conversation_id = str(uuid.uuid4())
-                        st.session_state.messages = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}]
-                        st.rerun()
+                    resp = supabase.table("usuarios").select("*").eq("correo", correo_login).execute()
+                    if len(resp.data) > 0 and check_password_hash(resp.data[0]['contrasena'], pass_login):
+                        if resp.data[0].get('rol') == 'bloqueado':
+                            st.error("Tu cuenta ha sido suspendida. Contacta a Jefatura de Carrera.", icon=":material/block:")
+                        else:
+                            st.session_state.usuario_id = resp.data[0]['id']
+                            st.session_state.usuario_nombre = resp.data[0]['nombre']
+                            st.session_state.usuario_carrera = resp.data[0].get('carrera', 'N/A')
+                            st.session_state.usuario_rol = resp.data[0].get('rol', 'estudiante')
+                            
+                            st.session_state.conversation_id = str(uuid.uuid4())
+                            st.session_state.messages = [{"role": "system", "content": generar_prompt_sistema(st.session_state.usuario_nombre, st.session_state.usuario_carrera)}]
+                            st.rerun()
                     else:
                         st.error("Credenciales incorrectas.", icon=":material/error:")
-                except Exception:
+                except Exception as e:
                     st.error("Error de conexión.", icon=":material/cloud_off:")
         
         with tab_registro:
@@ -186,10 +272,76 @@ with st.sidebar:
                         if len(check.data) > 0:
                             st.warning("Correo ya registrado.")
                         else:
-                            supabase.table("usuarios").insert({"correo": correo_limpio, "contrasena": pass_reg, "nombre": nombre_reg, "carrera": carrera_reg, "rol": "estudiante"}).execute()
+                            hash_pass = generate_password_hash(pass_reg)
+                            supabase.table("usuarios").insert({"correo": correo_limpio, "contrasena": hash_pass, "nombre": nombre_reg, "carrera": carrera_reg, "rol": "estudiante"}).execute()
                             st.success("Cuenta creada. Por favor ingresa.")
                     except Exception:
                         st.error("Error al registrar.")
+                        
+        with tab_recuperar:
+            st.markdown("##### Recuperar Contraseña")
+            correo_recuperar = st.text_input("Ingresa tu correo institucional:", key="rec_mail").strip().lower()
+            
+            if "codigo_recuperacion" not in st.session_state:
+                st.session_state.codigo_recuperacion = None
+            if "correo_recuperacion" not in st.session_state:
+                st.session_state.correo_recuperacion = None
+                
+            if st.button("Enviar código al correo", icon=":material/mail:"):
+                if correo_recuperar:
+                    check = supabase.table("usuarios").select("id").eq("correo", correo_recuperar).execute()
+                    if len(check.data) > 0:
+                        codigo = str(random.randint(100000, 999999))
+                        st.session_state.codigo_recuperacion = codigo
+                        st.session_state.correo_recuperacion = correo_recuperar
+                        
+                        try:
+                            smtp_user = st.secrets.get("SMTP_USER", "")
+                            smtp_pass = st.secrets.get("SMTP_PASS", "")
+                            
+                            if smtp_user and smtp_pass:
+                                msg = MIMEMultipart()
+                                msg['From'] = smtp_user
+                                msg['To'] = correo_recuperar
+                                msg['Subject'] = "Código de recuperación - Asistente EIC"
+                                cuerpo = f"Tu código de recuperación es: {codigo}"
+                                msg.attach(MIMEText(cuerpo, 'plain'))
+                                
+                                server = smtplib.SMTP("smtp.gmail.com", 587)
+                                server.starttls()
+                                server.login(smtp_user, smtp_pass)
+                                server.send_message(msg)
+                                server.quit()
+                                st.success("Se ha enviado un código a tu correo.")
+                            else:
+                                st.warning(f"(Modo Desarrollo) No hay servidor SMTP configurado. Tu código es: {codigo}")
+                        except Exception as e:
+                            st.warning(f"Error al enviar correo: {e}. Tu código es: {codigo}")
+                    else:
+                        st.error("El correo no está registrado.")
+                else:
+                    st.error("Por favor ingresa un correo.")
+                    
+            if st.session_state.codigo_recuperacion:
+                codigo_ingresado = st.text_input("Ingresa el código de 6 dígitos:", key="rec_codigo")
+                nueva_pass = st.text_input("Nueva contraseña:", type="password", key="rec_pass")
+                if st.button("Actualizar contraseña", type="primary"):
+                    if codigo_ingresado == st.session_state.codigo_recuperacion:
+                        if nueva_pass:
+                            try:
+                                hash_nueva = generate_password_hash(nueva_pass)
+                                supabase.table("usuarios").update({"contrasena": hash_nueva}).eq("correo", st.session_state.correo_recuperacion).execute()
+                                st.success("Contraseña actualizada correctamente. Ya puedes iniciar sesión.")
+                                st.session_state.codigo_recuperacion = None
+                                st.session_state.correo_recuperacion = None
+                            except Exception as e:
+                                st.error(f"Error al actualizar: {e}")
+                        else:
+                            st.error("La contraseña no puede estar vacía.")
+                    else:
+                        st.error("Código incorrecto.")
+            
+            
     else:
         with st.container(border=True):
             icono_rol = ":material/admin_panel_settings:" if st.session_state.usuario_rol == "admin" else ":material/person:"
@@ -216,6 +368,8 @@ with st.sidebar:
             boton_menu("Entrenar Bot", ":material/psychology:", "Entrenar")
             boton_menu("Gestión de FAQs", ":material/contact_support:", "FAQs")
             boton_menu("Base Conocimiento", ":material/folder_managed:", "PDFs")
+            boton_menu("Gestión Usuarios", ":material/manage_accounts:", "Usuarios")
+            boton_menu("Configuración", ":material/settings:", "Configuracion")
 
         elif st.session_state.usuario_rol != "admin":
             st.markdown("<br>", unsafe_allow_html=True)
@@ -256,6 +410,10 @@ with st.sidebar:
                         st.rerun()
             except Exception:
                 st.caption("No hay chats recientes.")
+        
+    st.divider()
+    if st.button("Acerca de", icon=":material/info:", use_container_width=True):
+        modal_acerca_de()
 
 # --- 5. ENRUTADOR PRINCIPAL ---
 if st.session_state.usuario_rol == "admin":
@@ -293,34 +451,17 @@ if st.session_state.usuario_rol == "admin":
                 st.divider()
                 st.markdown("#### :material/monitoring: Visualización de Datos")
                 
-                col_grafico1, col_grafico2 = st.columns(2)
-                with col_grafico1:
-                    st.markdown("##### Temáticas más consultadas")
-                    if 'categoria' in df.columns and not df['categoria'].isnull().all():
-                        df_cat = df[df['categoria'].notna()]
-                        conteo_cat = df_cat['categoria'].value_counts().reset_index()
-                        conteo_cat.columns = ['Categoría', 'Consultas']
-                        
-                        fig_bar = px.bar(conteo_cat, x='Categoría', y='Consultas', color_discrete_sequence=["#00b4c8"], text_auto=True)
-                        fig_bar.update_layout(xaxis_title="Temática Académica", yaxis_title="Cantidad de Consultas", dragmode=False, margin=dict(l=0, r=0, t=30, b=0))
-                        fig_bar.update_xaxes(fixedrange=True)
-                        fig_bar.update_yaxes(fixedrange=True)
-                        st.plotly_chart(fig_bar, use_container_width=True, config={'displayModeBar': False})
-                    else:
-                        st.info("Aún no hay datos categorizados suficientes.", icon=":material/info:")
-
-                with col_grafico2:
-                    st.markdown("##### Volumen de consultas diario")
-                    if 'fecha' in df.columns:
-                        df['fecha_corta'] = pd.to_datetime(df['fecha']).dt.date
-                        conteo_fechas = df['fecha_corta'].value_counts().sort_index().reset_index()
-                        conteo_fechas.columns = ['Fecha', 'Consultas']
-                        
-                        fig_line = px.line(conteo_fechas, x='Fecha', y='Consultas', color_discrete_sequence=["#ff4b4b"], markers=True)
-                        fig_line.update_layout(xaxis_title="Fecha de Consulta", yaxis_title="Volumen", dragmode=False, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0))
-                        fig_line.update_xaxes(fixedrange=True, tickformat="%d-%m-%Y")
-                        fig_line.update_yaxes(fixedrange=True)
-                        st.plotly_chart(fig_line, use_container_width=True, config={'displayModeBar': False})
+                st.markdown("##### Volumen de consultas diario")
+                if 'fecha' in df.columns:
+                    df['fecha_corta'] = pd.to_datetime(df['fecha']).dt.date
+                    conteo_fechas = df['fecha_corta'].value_counts().sort_index().reset_index()
+                    conteo_fechas.columns = ['Fecha', 'Consultas']
+                    
+                    fig_line = px.line(conteo_fechas, x='Fecha', y='Consultas', color_discrete_sequence=["#ff4b4b"], markers=True)
+                    fig_line.update_layout(xaxis_title="Fecha de Consulta", yaxis_title="Volumen", dragmode=False, hovermode="x unified", margin=dict(l=0, r=0, t=30, b=0))
+                    fig_line.update_xaxes(fixedrange=True, tickformat="%d-%m-%Y")
+                    fig_line.update_yaxes(fixedrange=True)
+                    st.plotly_chart(fig_line, use_container_width=True, config={'displayModeBar': False})
 
                 st.markdown("##### Evolución de Tiempos de Respuesta (Segundos)")
                 if 'fecha' in df.columns and 'tiempo_respuesta' in df.columns:
@@ -340,14 +481,37 @@ if st.session_state.usuario_rol == "admin":
                 st.divider()
                 st.markdown("#### :material/policy: Auditoría y Evaluación de Jefatura")
                 
+                col_filt, col_ord = st.columns(2)
+                with col_filt:
+                    filtro_calif = st.multiselect("Filtrar por Calificación del Alumno:", options=[1, 2, 3, 4, 5], format_func=lambda x: f"{x} ⭐")
+                with col_ord:
+                    orden_calif = st.selectbox("Ordenar por Calificación:", options=["Más recientes", "Menor a Mayor", "Mayor a Menor"])
+                
                 csv = df.to_csv(index=False).encode('utf-8')
                 st.download_button(label="Descargar datos en Excel (CSV)", data=csv, file_name="auditoria_chatbot.csv", mime="text/csv", icon=":material/download:")
 
-                for d in reversed(data_int[-30:]): 
+                df_mostrar = df.copy()
+                
+                if filtro_calif:
+                    df_mostrar = df_mostrar[df_mostrar['calificacion'].isin(filtro_calif)]
+                    
+                if orden_calif == "Menor a Mayor":
+                    df_mostrar = df_mostrar.sort_values(by="calificacion", ascending=True, na_position='last')
+                elif orden_calif == "Mayor a Menor":
+                    df_mostrar = df_mostrar.sort_values(by="calificacion", ascending=False, na_position='last')
+                else: 
+                    df_mostrar = df_mostrar.sort_values(by="fecha", ascending=False)
+                
+                datos_filtrados = df_mostrar.head(50).to_dict('records')
+                
+                if not datos_filtrados:
+                    st.info("No hay interacciones que coincidan con los filtros.")
+
+                for d in datos_filtrados: 
                     calif_alumno = f"{int(d['calificacion'])} ⭐" if pd.notna(d.get('calificacion')) else "Sin calificar"
                     calif_jefe = f"{int(d['calificacion_jefatura'])} ⭐" if pd.notna(d.get('calificacion_jefatura')) else "Pendiente de revisión"
                     
-                    with st.expander(f"👤 {d['fecha'][:10]} | Pregunta: {d['pregunta'][:50]}..."):
+                    with st.expander(f"👤 {str(d.get('fecha', ''))[:10]} | Calificación: {calif_alumno} | Pregunta: {str(d.get('pregunta', ''))[:40]}..."):
                         st.markdown(f"**Consulta del estudiante:** {d['pregunta']}")
                         st.info(f"**Respuesta del Bot:** {d['respuesta']}", icon=":material/forum:")
                         st.markdown(f"**Evaluación del Alumno:** {calif_alumno}")
@@ -373,10 +537,12 @@ if st.session_state.usuario_rol == "admin":
             st.error(f"Error procesando métricas: {e}", icon=":material/error:")
 
     elif opcion_elegida == "Entrenar":
-        st.markdown("### :material/psychology: Entrenar Bot (Reglas Directas)")
+        st.markdown("### :material/psychology: Reglas y Comportamiento del Bot")
+        st.info("💡 **¿Para qué sirve esta sección?**\nUsa este apartado **solo para forzar respuestas exactas** ante situaciones específicas (ej. excepciones a la regla, respuestas institucionales fijas o correcciones rápidas). Para cargar información general de la carrera (reglamentos, mallas), utiliza la **Base de Conocimiento**, ya que el bot es más inteligente buscando ahí.", icon=":material/lightbulb:")
+        
         with st.form("form_reglas"):
-            tema = st.text_input("Tema o pregunta clave (ej: Práctica Profesional)")
-            respuesta_exigida = st.text_area("¿Qué debe responder el bot obligatoriamente?")
+            tema = st.text_input("Situación o consulta específica (ej: Cuando pregunten por feriados irrenunciables)")
+            respuesta_exigida = st.text_area("Instrucción estricta para el bot (ej: Responde que la universidad estará cerrada)")
             if st.form_submit_button("Guardar Regla", icon=":material/save:"):
                 if tema and respuesta_exigida:
                     try:
@@ -386,7 +552,10 @@ if st.session_state.usuario_rol == "admin":
                     except Exception as e: st.error(f"Error: {e}", icon=":material/error:")
         try:
             reglas_bd = supabase.table("reglas_jefatura").select("*").execute()
-            if reglas_bd.data: st.dataframe(reglas_bd.data, use_container_width=True, hide_index=True)
+            if reglas_bd.data:
+                reglas_mostrar = [r for r in reglas_bd.data if not r["tema_o_pregunta"].startswith("SYS_")]
+                if reglas_mostrar:
+                    st.dataframe(reglas_mostrar, use_container_width=True, hide_index=True)
         except Exception: pass
 
     elif opcion_elegida == "FAQs":
@@ -408,14 +577,14 @@ if st.session_state.usuario_rol == "admin":
                     ]
                     
                     try:
-                        respuesta_stream = cliente_llm.chat.completions.create(model="unsloth/Qwen3.6-35B-A3B-MTP-GGUF", messages=mensajes_borrador, temperature=0.1, max_tokens=2000, stream=True)
+                        respuesta_stream = cliente_llm.chat.completions.create(model="unsloth/Qwen3.6-35B-A3B-MTP-GGUF", messages=mensajes_borrador, temperature=obtener_temperatura(), max_tokens=4000, stream=True)
                     except Exception:
-                        respuesta_stream = cliente_respaldo.chat.completions.create(model="gemini-2.5-flash", messages=mensajes_borrador, temperature=0.1, max_tokens=2000, stream=True)
+                        respuesta_stream = cliente_respaldo.chat.completions.create(model="gemini-2.5-flash", messages=mensajes_borrador, temperature=obtener_temperatura(), max_tokens=2000, stream=True)
                         
                     for chunk in respuesta_stream:
                         if chunk.choices[0].delta.content is not None:
                             texto_generado += chunk.choices[0].delta.content
-                            placeholder.info(f"**Escribiendo borrador...**\n\n{texto_generado}▌", icon=":material/memory:")
+                            placeholder.markdown(f"<div style='background-color: rgba(0, 180, 200, 0.1); padding: 15px; border-radius: 8px; border-left: 3px solid #00b4c8; margin-bottom: 15px;'><strong style='color: #00b4c8;'>🤖 Escribiendo borrador...</strong><br><br>{texto_generado}▌</div>", unsafe_allow_html=True)
                     
                     # --- CORRECCIÓN CRÍTICA ---
                     # Nos aseguramos de limpiar espacios y guardar TODO el texto generado antes de cualquier rerun
@@ -456,8 +625,9 @@ if st.session_state.usuario_rol == "admin":
         except Exception: pass
         
     elif opcion_elegida == "PDFs":
-        st.markdown("### :material/folder_managed: Gestor Documental Autónomo (Cloud Storage)")
-        st.write("Ahora todos los reglamentos se guardan de forma permanente y segura en la nube de Supabase.")
+        st.markdown("### :material/folder_managed: Gestor Documental de Base de Conocimiento")
+        st.write("En esta pestaña puedes cargar el contexto para el asistente virtual. Puedes cargar reglamentos, calendarios o presentaciones en PDF.")
+        st.warning("Nota: Debes revisar el contenido extraído por la IA antes de subirlo a la base de datos, ya que la IA puede cometer errores al extraer el contenido, principalmente en fechas.", icon=":material/warning:")
         
         # --- INICIALIZAR VARIABLES DEL EDITOR ---
         if "archivo_a_editar" not in st.session_state:
@@ -485,11 +655,42 @@ if st.session_state.usuario_rol == "admin":
                     st.warning("El PDF parece estar vacío.", icon=":material/warning:")
 
             with col_texto:
-                st.markdown("#### Extracción y Limpieza")
+                st.markdown("#### Extracción y Limpieza con IA")
                 try:
-                    texto_extraido = ""
+                    texto_bruto = ""
                     for pagina in doc:
-                        texto_extraido += pagina.get_text("text") + "\n"
+                        texto_bruto += pagina.get_text("text") + "\n"
+                    
+                    # --- NUEVO: LIMPIEZA AUTOMÁTICA CON IA ---
+                    if "texto_limpio_ia" not in st.session_state or st.session_state.get("pdf_actual") != archivo_pdf.name:
+                        st.session_state.pdf_actual = archivo_pdf.name
+                        with st.spinner("🤖 La IA está ordenando este documento. Por favor espera..."):
+                            prompt_limpieza = f"""
+                            Actúa como un ingeniero de datos preparando información para un sistema RAG. 
+                            Tu objetivo es tomar el siguiente texto extraído de un PDF desordenado y reorganizarlo para que un bot lo entienda perfectamente.
+                            
+                            REGLAS:
+                            1. No omitas NINGÚN dato, reglamento o artículo. Mantén la información 100% intacta.
+                            2. Arregla las oraciones cortadas y une los párrafos.
+                            3. Si es un calendario o hay fechas, reescribe cada evento para que tenga su fecha, mes y año en la misma línea (ej: "- 15 de Marzo 2026: Inicio de clases").
+                            4. Usa formato Markdown (títulos con ## y listas con -) para estructurarlo.
+                            
+                            TEXTO BRUTO A ORDENAR:
+                            {texto_bruto}
+                            """
+                            
+                            try:
+                                resp_limpieza = cliente_respaldo.chat.completions.create(
+                                    model="gemini-2.5-flash", # Usamos Gemini directo para limpieza pesada porque es más rápido
+                                    messages=[{"role": "user", "content": prompt_limpieza}],
+                                    temperature=obtener_temperatura()
+                                )
+                                st.session_state.texto_limpio_ia = resp_limpieza.choices[0].message.content
+                            except Exception as e:
+                                st.session_state.texto_limpio_ia = f"Error en IA, usando texto bruto: {texto_bruto}"
+                    
+                    texto_extraido = st.session_state.texto_limpio_ia
+                    # ----------------------------------------
                     
                     with st.form("form_guardar_txt"):
                         st.caption("Edita este texto si es necesario antes de guardarlo en la nube.")
@@ -519,62 +720,136 @@ if st.session_state.usuario_rol == "admin":
                     st.error(f"Error al procesar: {e}", icon=":material/error:")
                     
         st.divider()
-        st.markdown("#### :material/cloud: Archivos en la Nube (Base de Conocimiento)")
-        
-        # --- EDITOR DE TEXTO EN VIVO ---
-        if st.session_state.archivo_a_editar:
-            st.info(f"Modificando el archivo: **{st.session_state.archivo_a_editar}**", icon=":material/edit_note:")
-            with st.form("form_edicion_directa"):
-                nuevo_texto = st.text_area("Contenido del documento:", value=st.session_state.contenido_edicion, height=350)
-                col_save, col_cancel = st.columns(2)
-                
-                with col_save:
-                    if st.form_submit_button("Guardar Cambios en la Nube", type="primary", use_container_width=True, icon=":material/save:"):
-                        texto_bytes = nuevo_texto.encode('utf-8')
-                        try:
-                            supabase.storage.from_("conocimiento").update(file=texto_bytes, path=st.session_state.archivo_a_editar, file_options={"content-type": "text/plain"})
-                        except:
-                            supabase.storage.from_("conocimiento").remove([st.session_state.archivo_a_editar])
-                            supabase.storage.from_("conocimiento").upload(file=texto_bytes, path=st.session_state.archivo_a_editar, file_options={"content-type": "text/plain"})
-                            
-                        st.success("¡Archivo actualizado correctamente!", icon=":material/check_circle:")
-                        st.session_state.archivo_a_editar = None
-                        time.sleep(1.5)
-                        st.rerun()
-                
-                with col_cancel:
-                    if st.form_submit_button("Cancelar", use_container_width=True, icon=":material/cancel:"):
-                        st.session_state.archivo_a_editar = None
-                        st.rerun()
-            st.divider()
-        # -------------------------------
+        st.markdown("#### :material/cloud: Archivos cargados en la base vectorial")
 
         try:
-            lista_archivos_nube = supabase.storage.from_("conocimiento").list()
-            archivos_txt = [f['name'] for f in lista_archivos_nube if f['name'].endswith(".txt")]
-            
-            if archivos_txt:
-                for arch in archivos_txt:
-                    colA, colB, colC = st.columns([6, 2, 2])
-                    with colA:
-                        st.markdown(f":material/description: **{arch}**")
-                    with colB:
-                        if st.button("Editar", key=f"edit_{arch}", icon=":material/edit:", use_container_width=True):
-                            st.session_state.archivo_a_editar = arch
-                            datos_archivo = supabase.storage.from_("conocimiento").download(arch)
-                            st.session_state.contenido_edicion = datos_archivo.decode('utf-8')
-                            st.rerun()
-                    with colC:
-                        if st.button("Eliminar", key=f"del_{arch}", icon=":material/delete:", use_container_width=True):
-                            try:
-                                supabase.storage.from_("conocimiento").remove([arch])
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error al eliminar: {e}", icon=":material/error:")
+            resp_vectores = supabase.table("documentos_vectoriales").select("nombre_archivo").execute()
+            if resp_vectores.data:
+                archivos_unicos = list(set([fila['nombre_archivo'] for fila in resp_vectores.data if fila.get('nombre_archivo')]))
+                archivos_unicos.sort()
+                
+                if archivos_unicos:
+                    for arch in archivos_unicos:
+                        colA, colC = st.columns([8, 2])
+                        with colA:
+                            st.markdown(f":material/description: **{arch}**")
+                        with colC:
+                            if st.button("Eliminar", key=f"del_vec_{arch}", icon=":material/delete:", use_container_width=True):
+                                try:
+                                    supabase.table("documentos_vectoriales").delete().eq("nombre_archivo", arch).execute()
+                                    st.toast(f"Se eliminó '{arch}' de la base vectorial.", icon=":material/delete:")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error al eliminar: {e}", icon=":material/error:")
+                else:
+                    st.info("No hay documentos en la base vectorial aún.", icon=":material/info:")
             else:
-                st.info("No hay documentos en el Storage de Supabase aún.", icon=":material/info:")
+                st.info("No hay documentos en la base vectorial aún.", icon=":material/info:")
         except Exception as e:
-            st.warning("No se pudo conectar al Bucket 'conocimiento' o aún no existe.", icon=":material/warning:")
+            st.warning(f"Error al consultar la base de datos vectorial: {e}", icon=":material/warning:")
+
+    elif opcion_elegida == "Usuarios":
+        st.markdown("### :material/manage_accounts: Gestión de Usuarios")
+        st.write("Administra los permisos y accesos de los usuarios registrados en el sistema.")
+        
+        try:
+            usuarios_bd = supabase.table("usuarios").select("id, correo, nombre, carrera, rol, fecha_registro").execute()
+            if usuarios_bd.data:
+                df_usuarios = pd.DataFrame(usuarios_bd.data)
+                st.dataframe(df_usuarios, use_container_width=True, hide_index=True)
+                
+                st.divider()
+                st.markdown("#### Cambiar Rol / Bloquear Usuario")
+                col_usr, col_rol = st.columns(2)
+                
+                with col_usr:
+                    lista_correos = df_usuarios['correo'].tolist()
+                    correo_sel = st.selectbox("Selecciona un correo:", options=lista_correos)
+                
+                with col_rol:
+                    rol_actual = df_usuarios[df_usuarios['correo'] == correo_sel]['rol'].values[0] if correo_sel else "estudiante"
+                    nuevo_rol = st.selectbox("Asignar nuevo rol:", options=["estudiante", "admin", "bloqueado"], index=["estudiante", "admin", "bloqueado"].index(rol_actual) if rol_actual in ["estudiante", "admin", "bloqueado"] else 0)
+                
+                if st.button("Actualizar Rol", type="primary", icon=":material/save:"):
+                    try:
+                        supabase.table("usuarios").update({"rol": nuevo_rol}).eq("correo", correo_sel).execute()
+                        st.success(f"Rol de {correo_sel} actualizado a '{nuevo_rol}'.", icon=":material/check_circle:")
+                        time.sleep(1.5)
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error al actualizar rol: {e}")
+            else:
+                st.info("No hay usuarios registrados.")
+        except Exception as e:
+            st.error(f"Error al cargar usuarios: {e}")
+
+    elif opcion_elegida == "Configuracion":
+        st.markdown("### :material/settings: Configuración del Sistema")
+        
+        st.markdown("#### :material/thermostat: Creatividad del Bot (Temperatura)")
+        temp_actual = obtener_temperatura()
+        nueva_temp = st.slider(
+            "Ajusta la temperatura del modelo de Lenguaje", 
+            min_value=0.0, max_value=1.0, value=float(temp_actual), step=0.1,
+            help="0.1 es el valor por defecto. Valores cercanos a 1.0 lo hacen más creativo pero propenso a inventar información (Alucinaciones). Se recomienda mantener entre 0.0 y 0.2 para que no invente."
+        )
+        if st.button("Guardar Temperatura", icon=":material/save:"):
+            try:
+                # Comprobar si existe
+                check = supabase.table("reglas_jefatura").select("id").eq("tema_o_pregunta", "SYS_TEMP").execute()
+                if len(check.data) > 0:
+                    supabase.table("reglas_jefatura").update({"respuesta_correcta_exigida": str(nueva_temp)}).eq("tema_o_pregunta", "SYS_TEMP").execute()
+                else:
+                    supabase.table("reglas_jefatura").insert({"tema_o_pregunta": "SYS_TEMP", "respuesta_correcta_exigida": str(nueva_temp)}).execute()
+                st.success(f"Temperatura actualizada a {nueva_temp}")
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error al guardar: {e}")
+        
+        st.divider()
+        st.markdown("#### :material/campaign: Noticias y Avisos Rápidos (Contexto Inyectado)")
+        st.info("Escribe aquí noticias de última hora o avisos que el bot deba saber inmediatamente (ej. inscripción de asignaturas). Esto se leerá con prioridad.", icon=":material/lightbulb:")
+        
+        if "draft_noticia" not in st.session_state:
+            st.session_state.draft_noticia = ""
+            
+        nueva_noticia = st.text_area("Agregar Nueva Noticia:", value=st.session_state.draft_noticia, height=150)
+        
+        if st.button("Guardar Noticia", icon=":material/save:", type="primary"):
+            if nueva_noticia:
+                try:
+                    supabase.table("reglas_jefatura").insert({"tema_o_pregunta": "SYS_NEWS", "respuesta_correcta_exigida": nueva_noticia}).execute()
+                    st.success("Noticia agregada.")
+                    st.session_state.draft_noticia = ""
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+                    
+        st.markdown("#### Noticias Activas")
+        try:
+            resp_news = supabase.table("reglas_jefatura").select("id, respuesta_correcta_exigida").eq("tema_o_pregunta", "SYS_NEWS").execute()
+            if resp_news.data:
+                for n in resp_news.data:
+                    with st.container(border=True):
+                        col1, col2 = st.columns([9, 1])
+                        with col1:
+                            st.write(n["respuesta_correcta_exigida"])
+                        with col2:
+                            if st.button("Eliminar", key=f"del_news_{n['id']}", icon=":material/delete:", use_container_width=True):
+                                try:
+                                    supabase.table("reglas_jefatura").delete().eq("id", n["id"]).execute()
+                                    st.toast("Noticia eliminada")
+                                    time.sleep(1)
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error: {e}")
+            else:
+                st.caption("No hay noticias activas.")
+        except Exception as e:
+            st.error(f"Error al cargar noticias: {e}")
 
 else:
     def obtener_base64(ruta_imagen):
@@ -592,23 +867,56 @@ else:
     </div>
     """
     st.markdown(html_logos, unsafe_allow_html=True)
-    st.markdown("<h2 style='text-align: center; color: #00b4c8; margin: 0;'>Asistente Virtual EIC</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #e0e0e0; margin-top: 5px; font-size: 1.1em;'>Bienvenido al chatbot de la Escuela de Ingeniería. Consulta normativas, plazos y reglamentos.</p>", unsafe_allow_html=True)
+    st.markdown("""
+        <div style='text-align: center; margin: 0; padding: 10px 0;'>
+            <h2 style='color: #00b4c8; font-weight: 800; letter-spacing: -1px; margin-bottom: 0;'>Asistente Virtual UCN</h2>
+            <p style='color: gray; font-size: 0.9em; margin-top: 5px;'>Escuela de Ingeniería - Sede Coquimbo</p>
+        </div>
+    """, unsafe_allow_html=True)
+   # --- NUEVO DISEÑO FAQs (TARJETAS INTELIGENTES) ---
+    st.markdown("""
+        <div style='display: flex; align-items: center; gap: 8px; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 1px solid rgba(0, 180, 200, 0.2);'>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#00b4c8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <h3 style='margin: 0; color: #00b4c8; font-weight: 500; font-size: 1.2em; letter-spacing: 0.5px;'>Preguntas Frecuentes</h3>
+        </div>
+    """, unsafe_allow_html=True)
+    try:
+        faqs_activas = supabase.table("faqs").select("*").eq("estado", "activa").execute()
+        if faqs_activas.data:
+            columnas = st.columns(3) # Crea una cuadrícula de 3 columnas para que parezcan tarjetas
+            for i, faq in enumerate(faqs_activas.data):
+                with columnas[i % 3]:
+                    # Usamos help= para que si la pregunta es muy larga, se pueda leer entera al pasar el mouse
+                    if st.button(f"💬 {faq['pregunta']}", key=f"faq_{faq['id']}", use_container_width=True, help=faq['pregunta']):
+                        
+                        # 1. Agregamos a la memoria del bot (Así tiene el contexto para preguntas futuras)
+                        st.session_state.messages.append({"role": "user", "content": faq['pregunta']})
+                        st.session_state.messages.append({"role": "assistant", "content": faq['respuesta'], "db_id": None})
+                        
+                        # 2. Lo guardamos en BD para tus métricas
+                        uid = st.session_state.usuario_id if st.session_state.usuario_id else st.session_state.anon_user_id
+                        try:
+                            supabase.table("interacciones").insert({
+                                "conversacion_id": st.session_state.conversation_id, 
+                                "pregunta": faq['pregunta'], 
+                                "respuesta": faq['respuesta'], 
+                                "usuario_id": uid, 
+                                "tiempo_respuesta": 0.1, # Tiempo instantáneo
+                                "categoria": "FAQ"
+                            }).execute()
+                        except: pass
+                        
+                        # 3. Recargamos la interfaz para que el chat aparezca inmediatamente
+                        st.rerun()
+        else:
+            st.caption("No hay preguntas frecuentes activas en este momento.")
+    except Exception:
+        st.caption("No se pudieron cargar las FAQs.")
     st.divider()
-
-    # --- NUEVO: MOSTRAR FAQs A LOS ESTUDIANTES ---
-    with st.expander("📌 Ver Preguntas Frecuentes (Respuestas Inmediatas)"):
-        try:
-            faqs_activas = supabase.table("faqs").select("*").eq("estado", "activa").execute()
-            if faqs_activas.data:
-                for faq in faqs_activas.data:
-                    st.markdown(f"**P: {faq['pregunta']}**")
-                    st.info(faq['respuesta'])
-            else:
-                st.caption("No hay preguntas frecuentes activas en este momento.")
-        except Exception:
-            st.caption("No se pudieron cargar las FAQs.")
-    st.markdown("<br>", unsafe_allow_html=True)
     # ---------------------------------------------
 
     for msg in st.session_state.messages:
@@ -656,12 +964,18 @@ else:
             inicio_llm = time.time()
             
             try:
-                with st.spinner("Analizando documentos (Servidor UCN)..."):
+                mensajes_carga = [
+                    "Pensando la mejor respuesta...",
+                    "Consultando la base de datos...",
+                    "Analizando tu consulta...",
+                    "Procesando información..."
+                ]
+                with st.spinner(random.choice(mensajes_carga)):
                     respuesta = cliente_llm.chat.completions.create(
                         model="unsloth/Qwen3.6-35B-A3B-MTP-GGUF",
                         messages=mensajes_api,
-                        temperature=0.1,
-                        max_tokens=2000,
+                        temperature=obtener_temperatura(),
+                        max_tokens=4000,
                         stream=True 
                     )
                     for chunk in respuesta:
@@ -675,7 +989,7 @@ else:
                         respuesta_gemini = cliente_respaldo.chat.completions.create(
                             model="gemini-2.5-flash",
                             messages=mensajes_api,
-                            temperature=0.1,
+                            temperature=obtener_temperatura(),
                             max_tokens=2000,
                             stream=True 
                         )
@@ -693,6 +1007,7 @@ else:
             message_placeholder.markdown(full_response)
             
             # --- NUEVO CLASIFICADOR ESTRICTO ---
+            # --- CLASIFICADOR BLINDADO ---
             categoria_asignada = "Otro"
             try:
                 categorias_validas = [
@@ -700,10 +1015,11 @@ else:
                     "Beneficios", "Certificados", "Congelación", "Convalidación", 
                     "Malla Curricular", "Minor", "Fechas y Plazos"
                 ]
-                categorias_texto = ", ".join(categorias_validas)
                 
-                # Prompt blindado
-                cat_prompt = f"Actúa como un clasificador automático. Lee la pregunta del alumno y clasifícala en EXACTAMENTE UNA de estas categorías: {categorias_texto}.\nREGLA DE ORO: Escribe ÚNICAMENTE el nombre de la categoría. Cero explicaciones, cero comillas.\nPregunta: '{user_input}'"
+                cat_prompt = f"""Elige la categoría exacta que corresponda a esta pregunta de un estudiante universitario.
+                OPCIONES: {', '.join(categorias_validas)}.
+                PREGUNTA: "{user_input}"
+                RESPONDE SOLO CON LA PALABRA DE LA OPCIÓN. NO DES EXPLICACIONES. NADA MÁS."""
                 
                 try:
                     cat_resp = cliente_llm.chat.completions.create(
@@ -720,19 +1036,17 @@ else:
                     
                 respuesta_bruta = cat_resp.choices[0].message.content.strip().lower()
                 
-                # Búsqueda a prueba de fallos
                 for cat in categorias_validas:
-                    cat_limpia = cat.lower().translate(str.maketrans('áéíóú', 'aeiou'))
-                    resp_limpia = respuesta_bruta.translate(str.maketrans('áéíóú', 'aeiou'))
+                    cat_limpia = cat.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
+                    resp_limpia = respuesta_bruta.replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
                     
-                    if cat_limpia in resp_limpia:
+                    if cat_limpia == resp_limpia or cat_limpia in resp_limpia:
                         categoria_asignada = cat
                         break
                 
-                # Inteligencia extra para fechas por si falla la IA
                 if categoria_asignada == "Otro":
                     palabras_fecha = ["cuando", "fecha", "plazo", "calendario", "dia", "mes", "semana", "duracion"]
-                    user_input_limpio = user_input.lower().translate(str.maketrans('áéíóú', 'aeiou'))
+                    user_input_limpio = user_input.lower().replace("á", "a").replace("é", "e").replace("í", "i").replace("ó", "o").replace("ú", "u")
                     if any(p in user_input_limpio for p in palabras_fecha):
                         categoria_asignada = "Fechas y Plazos"
 

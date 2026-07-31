@@ -4,3 +4,4 @@ openai
 pandas
 plotly
 PyMuPDF
+werkzeug

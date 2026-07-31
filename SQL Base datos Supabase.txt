@@ -1,0 +1,80 @@
+## Table `usuarios`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `uuid` | Primary |
+| `correo` | `text` |  Unique |
+| `nombre` | `text` |  Nullable |
+| `fecha_registro` | `timestamptz` |  Nullable |
+| `contrasena` | `text` |  Nullable |
+| `carrera` | `text` |  Nullable |
+| `rol` | `text` |  Nullable |
+
+## Table `interacciones`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int8` | Primary Identity |
+| `usuario_id` | `uuid` |  Nullable |
+| `conversacion_id` | `text` |  Nullable |
+| `pregunta` | `text` |  Nullable |
+| `respuesta` | `text` |  Nullable |
+| `calificacion` | `int4` |  Nullable |
+| `fecha` | `timestamptz` |  Nullable |
+| `tiempo_respuesta` | `float8` |  Nullable |
+| `categoria` | `text` |  Nullable |
+| `calificacion_jefatura` | `int2` |  Nullable |
+
+## Table `encuestas_salida`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int8` | Primary Identity |
+| `usuario_id` | `uuid` |  Nullable |
+| `motivo_consulta` | `text` |  Nullable |
+| `resolvio_duda` | `text` |  Nullable |
+| `comentario` | `text` |  Nullable |
+| `fecha` | `timestamptz` |  Nullable |
+
+## Table `faqs`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int8` | Primary Identity |
+| `created_at` | `timestamptz` |  |
+| `pregunta` | `text` |  Nullable |
+| `estado` | `text` |  Nullable |
+| `creado_por_id` | `uuid` |  Nullable |
+| `respuesta` | `text` |  Nullable |
+
+## Table `reglas_jefatura`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int8` | Primary Identity |
+| `created_at` | `timestamptz` |  |
+| `tema_o_pregunta` | `text` |  Nullable |
+| `respuesta_correcta_exigida` | `text` |  Nullable |
+| `creado_por_id` | `uuid` |  Nullable |
+
+## Table `documentos_vectoriales`
+
+### Columns
+
+| Name | Type | Constraints |
+|------|------|-------------|
+| `id` | `int8` | Primary |
+| `nombre_archivo` | `text` |  Nullable |
+| `contenido` | `text` |  Nullable |
+| `embedding` | `vector` |  Nullable |
+
