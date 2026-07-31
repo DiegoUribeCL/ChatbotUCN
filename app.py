@@ -58,19 +58,24 @@ st.markdown("""
             color: gray;
         }
         
-        /* Asegurar fondo visible en los cuadros de texto de la barra lateral */
-        [data-testid="stSidebar"] [data-testid="stTextInput"] div[data-baseweb="input"] {
-            background-color: rgba(0, 0, 0, 0.3) !important;
-            border: 1px solid rgba(0, 180, 200, 0.5) !important;
+        /* Asegurar fondo visible en los cuadros de texto y selects de la barra lateral */
+        [data-testid="stSidebar"] div[data-baseweb="base-input"],
+        [data-testid="stSidebar"] div[data-baseweb="select"] {
+            background-color: #0c151c !important; /* Color fijo más oscuro que el sidebar */
+            border: 1px solid rgba(0, 180, 200, 0.4) !important;
             border-radius: 6px !important;
         }
-        [data-testid="stSidebar"] [data-testid="stTextInput"] div[data-baseweb="input"]:focus-within {
+        [data-testid="stSidebar"] div[data-baseweb="base-input"]:focus-within,
+        [data-testid="stSidebar"] div[data-baseweb="select"]:focus-within {
             border: 1px solid #00b4c8 !important;
-            background-color: rgba(0, 0, 0, 0.5) !important;
+            background-color: #0f1a24 !important;
         }
         [data-testid="stSidebar"] input { 
             color: white !important; 
             background-color: transparent !important; 
+        }
+        [data-testid="stSidebar"] div[data-baseweb="select"] span {
+            color: white !important;
         }
         div[data-testid="stImage"] { display: flex; justify-content: center; align-items: center; }
         div[data-testid="stImage"] img { object-fit: contain !important; }
